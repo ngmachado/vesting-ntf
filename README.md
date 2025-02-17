@@ -1,4 +1,4 @@
-# Superfluid Vesting System
+# Vesting System using Superfluid Streams
 
 A modular vesting system built on top of Superfluid Protocol that uses NFTs to represent and manage vesting streams.
 

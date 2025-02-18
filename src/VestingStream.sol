@@ -23,20 +23,17 @@ contract Vesting is IVesting {
     //   _/ // / / / / / / / / / / /_/ / /_/ /_/ / /_/ / /  __/   ___/ / /_/ /_/ / /_/  __(__  )
     //  /___/_/ /_/ /_/_/ /_/ /_/\__,_/\__/\__,_/_.___/_/\___/   /____/\__/\__,_/\__/\___/____/
 
-    /// @notice SUP Vesting Factory contract address
+    /// @notice Vesting Factory contract address
     IVestingFactory public immutable override factory;
-
-    /// @notice Vesting Recipient address
-    address public immutable override recipient;
 
     /// @notice SUP Token contract address
     ISuperToken public immutable override superToken;
 
-    /// @notice Amount of tokens to vest per second
-    int96 public immutable override amountPerSecond;
-
     /// @notice ERC721 Id
     uint256 public immutable override erc721TokenId;
+
+    error OnlyFactoryOrAdmin();
+    error OnlyFactory();
 
     //     ______                 __                  __
     //    / ____/___  ____  _____/ /________  _______/ /_____  _____
@@ -47,31 +44,52 @@ contract Vesting is IVesting {
     /**
      * @notice Creates a new vesting stream contract
      * @param token The SuperToken to be streamed
-     * @param _recipient The recipient of the stream
-     * @param _amountPerSecond The flow rate of tokens per second
      * @param _erc721TokenId The NFT token ID associated with this stream
      */
-    constructor(ISuperToken token, address _recipient, int96 _amountPerSecond, uint256 _erc721TokenId) {
-        // Persist the admin, recipient, and vesting scheduler addresses
-        recipient = _recipient;
+    constructor(ISuperToken token, uint256 _erc721TokenId) {
         superToken = token;
         factory = IVestingFactory(msg.sender);
-        amountPerSecond = _amountPerSecond;
         erc721TokenId = _erc721TokenId;
 
-        // Grant flow and token allowances
-        superToken.setMaxFlowPermissions(address(factory));
-        superToken.approve(address(factory), type(uint256).max);
+        // Grant flow and token allowances to admin
+        address admin = factory.admin();
+        superToken.setMaxFlowPermissions(admin);
+        superToken.approve(admin, type(uint256).max);
+    }
+
+    modifier onlyFactoryOrAdmin() {
+        if (msg.sender != factory.admin() && msg.sender != address(factory))
+            revert OnlyFactoryOrAdmin();
+        _;
+    }
+
+    modifier onlyFactory() {
+        if (msg.sender != address(factory)) revert OnlyFactory();
+        _;
+    }
+
+    /**
+     * @notice Get current recipient from NFT ownership
+     */
+    function recipient() external view override returns (address) {
+        return factory.ownerOf(erc721TokenId);
+    }
+
+    /**
+     * @notice Get amount of tokens to vest per second
+     */
+    function amountPerSecond() external view override returns (int96) {
+        return factory.getVestingSchedule(erc721TokenId).amountPerSecond;
     }
 
     /**
      * @notice Opens the stream after funding
      */
-    function openStream() external {
-        require(msg.sender == address(factory), "Only factory can open stream");
-        require(superToken.balanceOf(address(this)) >= uint256(uint96(amountPerSecond)), "Insufficient balance");
-
-        superToken.createFlow(recipient, amountPerSecond);
+    function openStream() external onlyFactory {
+        superToken.createFlow(
+            factory.ownerOf(erc721TokenId),
+            factory.getVestingSchedule(erc721TokenId).amountPerSecond
+        );
     }
 
     //      ______     __                        __   ______                 __  _
@@ -81,63 +99,30 @@ contract Vesting is IVesting {
     //  /_____/_/|_|\__/\___/_/  /_/ /_/\__,_/_/  /_/    \__,_/_/ /_/\___/\__/_/\____/_/ /_/____/
 
     /**
-     * @notice Withdraws remaining tokens in case of emergency
-     */
-    function emergencyWithdraw() external onlyAdmin {
-        // Close the flow between this contract and the recipient
-        superToken.deleteFlow(address(this), recipient);
-
-        // Fetch the remaining balance of the vesting contract
-        uint256 remainingBalance = superToken.balanceOf(address(this));
-
-        // Transfer the remaining tokens to the treasury
-        superToken.transfer(factory.treasury(), remainingBalance);
-
-        // Emit the `VestingDeleted` event
-        emit VestingDeleted(remainingBalance);
-    }
-
-    //      __  ___          ___ _____
-    //     /  |/  /___  ____/ (_) __(_)__  __________
-    //    / /|_/ / __ \/ __  / / /_/ / _ \/ ___/ ___/
-    //   / /  / / /_/ / /_/ / / __/ /  __/ /  (__  )
-    //  /_/  /_/\____/\__,_/_/_/ /_/\___/_/  /____/
-
-    /**
-     * @notice Modifier to restrict access to admin only
-     */
-    modifier onlyAdmin() {
-        require(msg.sender == factory.admin() || msg.sender == address(factory), "Only admin or factory");
-        _;
-    }
-
-    /**
      * @notice Updates the recipient of the vesting stream
      * @param newRecipient The new recipient address
      */
-    function updateRecipient(address newRecipient) external {
-        require(msg.sender == address(factory), "Only factory can update recipient");
+    function updateRecipient(address newRecipient) external onlyFactory {
+        int96 flowRate = factory
+            .getVestingSchedule(erc721TokenId)
+            .amountPerSecond;
 
         // Close existing stream
-        superToken.deleteFlow(address(this), recipient);
+        superToken.deleteFlow(address(this), factory.ownerOf(erc721TokenId));
 
         // Start new stream to new recipient
-        superToken.createFlow(newRecipient, amountPerSecond);
+        superToken.createFlow(newRecipient, flowRate);
     }
 
     /**
      * @notice Stops the vesting stream and sends remaining tokens to treasury
      */
-    function stopStream() external {
-        require(msg.sender == address(factory), "Only factory can stop stream");
+    function stopStream() external onlyFactoryOrAdmin {
+        // Close the flow between this contract and the current recipient
+        superToken.deleteFlow(address(this), factory.ownerOf(erc721TokenId));
 
-        // Close the flow between this contract and the recipient
-        superToken.deleteFlow(address(this), recipient);
-
-        // Fetch the remaining balance of the vesting contract
+        // Fetch and transfer remaining balance to treasury
         uint256 remainingBalance = superToken.balanceOf(address(this));
-
-        // Transfer the remaining tokens to the treasury
         if (remainingBalance > 0) {
             superToken.transfer(factory.treasury(), remainingBalance);
         }

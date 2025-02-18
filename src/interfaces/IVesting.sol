@@ -5,10 +5,8 @@ import {ISuperToken} from "@superfluid-finance/ethereum-contracts/contracts/inte
 import {IVestingFactory} from "./IVestingFactory.sol";
 
 interface IVesting {
-    // Events
     event VestingDeleted(uint256 remainingBalance);
 
-    // Functions
     function factory() external view returns (IVestingFactory);
     function recipient() external view returns (address);
     function superToken() external view returns (ISuperToken);
@@ -17,6 +15,5 @@ interface IVesting {
 
     function openStream() external;
     function updateRecipient(address newRecipient) external;
-    function emergencyWithdraw() external;
     function stopStream() external;
 }

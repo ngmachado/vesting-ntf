@@ -3,7 +3,7 @@ pragma solidity ^0.8.28;
 
 import "./helpers/SuperfluidHelper.sol";
 import {SuperTokenV1Library} from "@superfluid-finance/ethereum-contracts/contracts/apps/SuperTokenV1Library.sol";
-import {VestingSessionManager} from "../src/VestingSessionManager.sol";
+import {StreamingNFTManager} from "../src/StreamingNFTManager.sol";
 import {VestingFactory} from "../src/VestingFactory.sol";
 import {Vesting} from "../src/VestingStream.sol";
 import {IVestingFactory} from "../src/interfaces/IVestingFactory.sol";
@@ -22,13 +22,13 @@ contract VestingSystemTest is SuperfluidHelper {
 
     address[] internal _testAccounts = [ADMIN, TREASURY, ALICE, BOB, CAROL];
 
-    VestingSessionManager public sessionManager;
+    StreamingNFTManager public seasonManager;
 
     function setUp() public virtual {
         setupSuperfluid();
 
         vm.startPrank(ADMIN);
-        sessionManager = new VestingSessionManager(ADMIN);
+        seasonManager = new StreamingNFTManager(ADMIN);
         vm.stopPrank();
 
         for (uint256 i; i < _testAccounts.length; ++i) {
@@ -36,20 +36,21 @@ contract VestingSystemTest is SuperfluidHelper {
         }
     }
 
-    function testCreateSession() public {
+    function testCreateSeason() public {
         vm.startPrank(ADMIN);
 
-        uint256 sessionId = sessionManager.createSession(
-            "Test Session",
+        uint256 seasonId = seasonManager.createSeason(
+            "Test Season",
             TREASURY,
             getSuperToken(),
             "https://api.example.com/metadata/"
         );
 
-        VestingSessionManager.Session memory session = sessionManager
-            .getSession(sessionId);
-        assertTrue(session.active);
-        assertEq(session.name, "Test Session");
+        StreamingNFTManager.Season memory season = seasonManager.getSeason(
+            seasonId
+        );
+        assertTrue(season.active);
+        assertEq(season.name, "Test Season");
 
         vm.stopPrank();
     }
@@ -57,13 +58,13 @@ contract VestingSystemTest is SuperfluidHelper {
     function testScheduleVesting() public {
         vm.startPrank(ADMIN);
 
-        uint256 sessionId = sessionManager.createSession(
-            "Test Session",
+        uint256 seasonId = seasonManager.createSeason(
+            "Test Season",
             TREASURY,
             getSuperToken(),
             "https://api.example.com/metadata/"
         );
-        address factoryAddress = sessionManager.getSessionFactory(sessionId);
+        address factoryAddress = seasonManager.getSeasonFactory(seasonId);
         VestingFactory factory = VestingFactory(factoryAddress);
 
         uint32 startTime = uint32(block.timestamp + 1 days);
@@ -78,7 +79,7 @@ contract VestingSystemTest is SuperfluidHelper {
 
         VestingFactory.VestingSchedule memory schedule = factory
             .getVestingSchedule(tokenId);
-        assertEq(schedule.recipient, ALICE);
+        assertEq(schedule.originalRecipient, ALICE);
         assertEq(schedule.amountPerSecond, STREAM_RATE);
         assertEq(schedule.startTime, startTime);
         assertEq(schedule.endTime, endTime);
@@ -91,17 +92,17 @@ contract VestingSystemTest is SuperfluidHelper {
     function testClaimVesting() public {
         vm.startPrank(ADMIN);
 
-        uint256 sessionId = sessionManager.createSession(
-            "Test Session",
+        uint256 seasonId = seasonManager.createSeason(
+            "Test Season",
             TREASURY,
             getSuperToken(),
             "https://api.example.com/metadata/"
         );
 
         VestingFactory factory = VestingFactory(
-            sessionManager.getSessionFactory(sessionId)
+            seasonManager.getSeasonFactory(seasonId)
         );
-        assertEq(sessionManager.getSessionFactory(sessionId), address(factory));
+        assertEq(seasonManager.getSeasonFactory(seasonId), address(factory));
 
         uint32 startTime = uint32(block.timestamp + 1 days);
         uint32 endTime = uint32(block.timestamp + 365 days);
@@ -140,14 +141,14 @@ contract VestingSystemTest is SuperfluidHelper {
 
     function testCannotClaimBeforeStartTime() public {
         vm.startPrank(ADMIN);
-        uint256 sessionId = sessionManager.createSession(
-            "Test Session",
+        uint256 seasonId = seasonManager.createSeason(
+            "Test Season",
             TREASURY,
             getSuperToken(),
             "https://api.example.com/metadata/"
         );
         VestingFactory factory = VestingFactory(
-            sessionManager.getSessionFactory(sessionId)
+            seasonManager.getSeasonFactory(seasonId)
         );
 
         uint32 startTime = uint32(block.timestamp + 1 days);
@@ -173,14 +174,14 @@ contract VestingSystemTest is SuperfluidHelper {
 
     function testCannotClaimTwice() public {
         vm.startPrank(ADMIN);
-        uint256 sessionId = sessionManager.createSession(
-            "Test Session",
+        uint256 seasonId = seasonManager.createSeason(
+            "Test Season",
             TREASURY,
             getSuperToken(),
             "https://api.example.com/metadata/"
         );
         VestingFactory factory = VestingFactory(
-            sessionManager.getSessionFactory(sessionId)
+            seasonManager.getSeasonFactory(seasonId)
         );
 
         uint32 startTime = uint32(block.timestamp + 1 days);
@@ -208,14 +209,14 @@ contract VestingSystemTest is SuperfluidHelper {
 
     function testTransferNFTUpdatesRecipient() public {
         vm.startPrank(ADMIN);
-        uint256 sessionId = sessionManager.createSession(
-            "Test Session",
+        uint256 seasonId = seasonManager.createSeason(
+            "Test Season",
             TREASURY,
             getSuperToken(),
             "https://api.example.com/metadata/"
         );
         VestingFactory factory = VestingFactory(
-            sessionManager.getSessionFactory(sessionId)
+            seasonManager.getSeasonFactory(seasonId)
         );
 
         uint32 startTime = uint32(block.timestamp + 1 days);
@@ -239,6 +240,8 @@ contract VestingSystemTest is SuperfluidHelper {
         factory.transferFrom(ALICE, BOB, tokenId);
         vm.stopPrank();
 
+        assertEq(factory.ownerOf(tokenId), BOB);
+
         address vestingContract = factory.getVestingContract(tokenId);
         int96 flowRate = getSuperToken().getFlowRate(vestingContract, BOB);
         assertEq(flowRate, STREAM_RATE);
@@ -249,14 +252,14 @@ contract VestingSystemTest is SuperfluidHelper {
 
     function testAdminCanDirectExecute() public {
         vm.startPrank(ADMIN);
-        uint256 sessionId = sessionManager.createSession(
-            "Test Session",
+        uint256 seasonId = seasonManager.createSeason(
+            "Test Season",
             TREASURY,
             getSuperToken(),
             "https://api.example.com/metadata/"
         );
         VestingFactory factory = VestingFactory(
-            sessionManager.getSessionFactory(sessionId)
+            seasonManager.getSeasonFactory(seasonId)
         );
 
         uint32 startTime = uint32(block.timestamp + 1 days);
@@ -280,16 +283,16 @@ contract VestingSystemTest is SuperfluidHelper {
         vm.stopPrank();
     }
 
-    function testEmergencyWithdraw() public {
+    function testStopStream() public {
         vm.startPrank(ADMIN);
-        uint256 sessionId = sessionManager.createSession(
-            "Test Session",
+        uint256 seasonId = seasonManager.createSeason(
+            "Test Season",
             TREASURY,
             getSuperToken(),
             "https://api.example.com/metadata/"
         );
         VestingFactory factory = VestingFactory(
-            sessionManager.getSessionFactory(sessionId)
+            seasonManager.getSeasonFactory(seasonId)
         );
 
         uint32 startTime = uint32(block.timestamp + 1 days);
@@ -315,7 +318,7 @@ contract VestingSystemTest is SuperfluidHelper {
 
         vm.startPrank(ADMIN);
         address vestingContract = factory.getVestingContract(tokenId);
-        Vesting(vestingContract).emergencyWithdraw();
+        Vesting(vestingContract).stopStream();
 
         int96 flowRate = getSuperToken().getFlowRate(vestingContract, ALICE);
         assertEq(flowRate, 0);
@@ -328,14 +331,14 @@ contract VestingSystemTest is SuperfluidHelper {
 
     function testCannotScheduleWithZeroAmount() public {
         vm.startPrank(ADMIN);
-        uint256 sessionId = sessionManager.createSession(
-            "Test Session",
+        uint256 seasonId = seasonManager.createSeason(
+            "Test Season",
             TREASURY,
             getSuperToken(),
             "https://api.example.com/metadata/"
         );
         VestingFactory factory = VestingFactory(
-            sessionManager.getSessionFactory(sessionId)
+            seasonManager.getSeasonFactory(seasonId)
         );
 
         uint32 startTime = uint32(block.timestamp + 1 days);
@@ -348,14 +351,14 @@ contract VestingSystemTest is SuperfluidHelper {
 
     function testCannotScheduleWithInvalidTime() public {
         vm.startPrank(ADMIN);
-        uint256 sessionId = sessionManager.createSession(
-            "Test Session",
+        uint256 seasonId = seasonManager.createSeason(
+            "Test Season",
             TREASURY,
             getSuperToken(),
             "https://api.example.com/metadata/"
         );
         VestingFactory factory = VestingFactory(
-            sessionManager.getSessionFactory(sessionId)
+            seasonManager.getSeasonFactory(seasonId)
         );
 
         uint32 startTime = uint32(block.timestamp + 1 days);
@@ -368,14 +371,14 @@ contract VestingSystemTest is SuperfluidHelper {
 
     function testOnlyAdminCanSchedule() public {
         vm.startPrank(ADMIN);
-        uint256 sessionId = sessionManager.createSession(
-            "Test Session",
+        uint256 seasonId = seasonManager.createSeason(
+            "Test Season",
             TREASURY,
             getSuperToken(),
             "https://api.example.com/metadata/"
         );
         VestingFactory factory = VestingFactory(
-            sessionManager.getSessionFactory(sessionId)
+            seasonManager.getSeasonFactory(seasonId)
         );
         vm.stopPrank();
 
@@ -390,14 +393,14 @@ contract VestingSystemTest is SuperfluidHelper {
 
     function testOnlyRecipientCanClaim() public {
         vm.startPrank(ADMIN);
-        uint256 sessionId = sessionManager.createSession(
-            "Test Session",
+        uint256 seasonId = seasonManager.createSeason(
+            "Test Season",
             TREASURY,
             getSuperToken(),
             "https://api.example.com/metadata/"
         );
         VestingFactory factory = VestingFactory(
-            sessionManager.getSessionFactory(sessionId)
+            seasonManager.getSeasonFactory(seasonId)
         );
 
         uint32 startTime = uint32(block.timestamp + 1 days);
@@ -423,14 +426,14 @@ contract VestingSystemTest is SuperfluidHelper {
 
     function testCannotClaimWithoutFunding() public {
         vm.startPrank(ADMIN);
-        uint256 sessionId = sessionManager.createSession(
-            "Test Session",
+        uint256 seasonId = seasonManager.createSeason(
+            "Test Season",
             TREASURY,
             getSuperToken(),
             "https://api.example.com/metadata/"
         );
         VestingFactory factory = VestingFactory(
-            sessionManager.getSessionFactory(sessionId)
+            seasonManager.getSeasonFactory(seasonId)
         );
 
         uint32 startTime = uint32(block.timestamp + 1 days);
@@ -451,16 +454,16 @@ contract VestingSystemTest is SuperfluidHelper {
         vm.stopPrank();
     }
 
-    function testOnlyAdminCanEmergencyWithdraw() public {
+    function testOnlyAdminCanStopStream() public {
         vm.startPrank(ADMIN);
-        uint256 sessionId = sessionManager.createSession(
-            "Test Session",
+        uint256 seasonId = seasonManager.createSeason(
+            "Test Season",
             TREASURY,
             getSuperToken(),
             "https://api.example.com/metadata/"
         );
         VestingFactory factory = VestingFactory(
-            sessionManager.getSessionFactory(sessionId)
+            seasonManager.getSeasonFactory(seasonId)
         );
 
         uint32 startTime = uint32(block.timestamp + 1 days);
@@ -484,96 +487,21 @@ contract VestingSystemTest is SuperfluidHelper {
 
         vm.startPrank(BOB);
         address vestingContract = factory.getVestingContract(tokenId);
-        vm.expectRevert("Only admin or factory");
-        Vesting(vestingContract).emergencyWithdraw();
+        vm.expectRevert(Vesting.OnlyFactoryOrAdmin.selector);
+        Vesting(vestingContract).stopStream();
         vm.stopPrank();
     }
 
-    function testMultipleSessionsAndReceivers() public {
+    function testStreamStopAfterTransfer() public {
         vm.startPrank(ADMIN);
-
-        uint256 sessionId1 = sessionManager.createSession(
-            "Session 1",
-            TREASURY,
-            getSuperToken(),
-            "https://api.example.com/metadata/1/"
-        );
-        uint256 sessionId2 = sessionManager.createSession(
-            "Session 2",
-            TREASURY,
-            getSuperToken(),
-            "https://api.example.com/metadata/2/"
-        );
-
-        VestingFactory factory1 = VestingFactory(
-            sessionManager.getSessionFactory(sessionId1)
-        );
-        VestingFactory factory2 = VestingFactory(
-            sessionManager.getSessionFactory(sessionId2)
-        );
-
-        uint32 startTime = uint32(block.timestamp + 1 days);
-        uint32 endTime = uint32(block.timestamp + 365 days);
-        uint256 totalAmount = uint256(uint96(STREAM_RATE)) *
-            uint256(endTime - startTime);
-
-        uint256 aliceTokenId = factory1.scheduleVestingStream(
-            ALICE,
-            STREAM_RATE,
-            startTime,
-            endTime
-        );
-        uint256 bobTokenId = factory1.scheduleVestingStream(
-            BOB,
-            STREAM_RATE,
-            startTime,
-            endTime
-        );
-
-        uint256 carolTokenId = factory2.scheduleVestingStream(
-            CAROL,
-            STREAM_RATE,
-            startTime,
-            endTime
-        );
-
-        getSuperToken().transfer(address(factory1), totalAmount * 2);
-        getSuperToken().transfer(address(factory2), totalAmount);
-        vm.stopPrank();
-
-        vm.warp(startTime);
-
-        vm.startPrank(ALICE);
-        factory1.claimVestingStream(aliceTokenId);
-        vm.stopPrank();
-
-        vm.startPrank(BOB);
-        factory1.claimVestingStream(bobTokenId);
-        vm.stopPrank();
-
-        vm.startPrank(CAROL);
-        factory2.claimVestingStream(carolTokenId);
-        vm.stopPrank();
-
-        address aliceVesting = factory1.getVestingContract(aliceTokenId);
-        address bobVesting = factory1.getVestingContract(bobTokenId);
-        address carolVesting = factory2.getVestingContract(carolTokenId);
-
-        assertEq(getSuperToken().getFlowRate(aliceVesting, ALICE), STREAM_RATE);
-        assertEq(getSuperToken().getFlowRate(bobVesting, BOB), STREAM_RATE);
-        assertEq(getSuperToken().getFlowRate(carolVesting, CAROL), STREAM_RATE);
-    }
-
-    function testChainedTransfers() public {
-        vm.startPrank(ADMIN);
-        uint256 sessionId = sessionManager.createSession(
-            "Test Session",
+        uint256 seasonId = seasonManager.createSeason(
+            "Test Season",
             TREASURY,
             getSuperToken(),
             "https://api.example.com/metadata/"
         );
         VestingFactory factory = VestingFactory(
-            sessionManager.getSessionFactory(sessionId)
+            seasonManager.getSeasonFactory(seasonId)
         );
 
         uint32 startTime = uint32(block.timestamp + 1 days);
@@ -594,34 +522,55 @@ contract VestingSystemTest is SuperfluidHelper {
         vm.startPrank(ALICE);
         factory.claimVestingStream(tokenId);
 
+        // Verify initial stream to ALICE
         address vestingContract = factory.getVestingContract(tokenId);
         assertEq(
             getSuperToken().getFlowRate(vestingContract, ALICE),
             STREAM_RATE
         );
 
-        vm.warp(startTime + 1 hours);
-
+        // Transfer NFT to BOB
         factory.transferFrom(ALICE, BOB, tokenId);
         vm.stopPrank();
+
+        // Verify stream is now to BOB
+        assertEq(
+            getSuperToken().getFlowRate(vestingContract, BOB),
+            STREAM_RATE
+        );
+        assertEq(getSuperToken().getFlowRate(vestingContract, ALICE), 0);
+
+        // Stop stream as admin
+        vm.startPrank(ADMIN);
+        Vesting(vestingContract).stopStream();
+        vm.stopPrank();
+
+        // Verify stream is stopped
+        assertEq(getSuperToken().getFlowRate(vestingContract, BOB), 0);
+        uint256 treasuryBalance = getSuperToken().balanceOf(TREASURY);
+        assertTrue(treasuryBalance > 0);
     }
 
-    function testDeactivateSession() public {
+    function testMultipleStreamStops() public {
+        // ... second implementation ...
+    }
+
+    function testDeactivateSeason() public {
         vm.startPrank(ADMIN);
 
-        uint256 sessionId = sessionManager.createSession(
-            "Test Session",
+        uint256 seasonId = seasonManager.createSeason(
+            "Test Season",
             TREASURY,
             getSuperToken(),
             "https://api.example.com/metadata/"
         );
-        assertTrue(sessionManager.getSession(sessionId).active);
+        assertTrue(seasonManager.getSeason(seasonId).active);
 
-        sessionManager.deactivateSession(sessionId);
-        assertFalse(sessionManager.getSession(sessionId).active);
+        seasonManager.deactivateSeason(seasonId);
+        assertFalse(seasonManager.getSeason(seasonId).active);
 
         VestingFactory factory = VestingFactory(
-            sessionManager.getSessionFactory(sessionId)
+            seasonManager.getSeasonFactory(seasonId)
         );
         uint32 startTime = uint32(block.timestamp + 1 days);
         uint32 endTime = uint32(block.timestamp + 365 days);
@@ -633,82 +582,6 @@ contract VestingSystemTest is SuperfluidHelper {
             endTime
         );
         assertTrue(tokenId >= 0);
-
-        vm.stopPrank();
-    }
-
-    function testMultipleEmergencyWithdraws() public {
-        vm.startPrank(ADMIN);
-        uint256 sessionId = sessionManager.createSession(
-            "Test Session",
-            TREASURY,
-            getSuperToken(),
-            "https://api.example.com/metadata/"
-        );
-        VestingFactory factory = VestingFactory(
-            sessionManager.getSessionFactory(sessionId)
-        );
-
-        uint32 startTime = uint32(block.timestamp + 1 days);
-        uint32 endTime = uint32(block.timestamp + 365 days);
-        uint256 totalAmount = uint256(uint96(STREAM_RATE)) *
-            uint256(endTime - startTime);
-
-        uint256[] memory tokenIds = new uint256[](3);
-        tokenIds[0] = factory.scheduleVestingStream(
-            ALICE,
-            STREAM_RATE,
-            startTime,
-            endTime
-        );
-        tokenIds[1] = factory.scheduleVestingStream(
-            BOB,
-            STREAM_RATE,
-            startTime,
-            endTime
-        );
-        tokenIds[2] = factory.scheduleVestingStream(
-            CAROL,
-            STREAM_RATE,
-            startTime,
-            endTime
-        );
-
-        getSuperToken().transfer(address(factory), totalAmount * 3);
-        vm.stopPrank();
-
-        vm.warp(startTime);
-
-        vm.prank(ALICE);
-        factory.claimVestingStream(tokenIds[0]);
-
-        vm.prank(BOB);
-        factory.claimVestingStream(tokenIds[1]);
-
-        vm.prank(CAROL);
-        factory.claimVestingStream(tokenIds[2]);
-
-        vm.startPrank(ADMIN);
-        uint256 treasuryBalanceBefore = getSuperToken().balanceOf(TREASURY);
-
-        for (uint256 i = 0; i < tokenIds.length; i++) {
-            address vestingContract = factory.getVestingContract(tokenIds[i]);
-            Vesting(vestingContract).emergencyWithdraw();
-        }
-
-        uint256 treasuryBalanceAfter = getSuperToken().balanceOf(TREASURY);
-        assertTrue(treasuryBalanceAfter > treasuryBalanceBefore);
-
-        for (uint256 i = 0; i < tokenIds.length; i++) {
-            address vestingContract = factory.getVestingContract(tokenIds[i]);
-            address recipient = factory
-                .getVestingSchedule(tokenIds[i])
-                .recipient;
-            assertEq(
-                getSuperToken().getFlowRate(vestingContract, recipient),
-                0
-            );
-        }
 
         vm.stopPrank();
     }

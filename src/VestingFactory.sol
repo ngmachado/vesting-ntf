@@ -5,6 +5,7 @@ import {ERC721} from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import {ISuperToken} from "@superfluid-finance/ethereum-contracts/contracts/interfaces/superfluid/ISuperfluid.sol";
 import "@superfluid-finance/ethereum-contracts/contracts/apps/SuperTokenV1Library.sol";
 import {ERC721URIStorage} from "@openzeppelin/contracts/token/ERC721/extensions/ERC721URIStorage.sol";
+import {IERC721} from "@openzeppelin/contracts/interfaces/IERC721.sol";
 
 import {Vesting} from "./VestingStream.sol";
 import {IVestingFactory} from "./interfaces/IVestingFactory.sol";
@@ -38,10 +39,17 @@ contract VestingFactory is IVestingFactory, ERC721, ERC721URIStorage {
     /// @notice Base URI for all token metadata
     string private _baseURIStorage;
 
-    constructor(address _admin, address _treasury, ISuperToken _superToken, string memory baseURI)
-        ERC721("Vesting NFT - Session 1", "VEST-NFT-SESSION-1")
-    {
-        if (_admin == address(0) || _treasury == address(0) || address(_superToken) == address(0)) {
+    constructor(
+        address _admin,
+        address _treasury,
+        ISuperToken _superToken,
+        string memory baseURI
+    ) ERC721("Vesting NFT - Session 1", "VEST-NFT-SESSION-1") {
+        if (
+            _admin == address(0) ||
+            _treasury == address(0) ||
+            address(_superToken) == address(0)
+        ) {
             revert InvalidParameters();
         }
         admin = _admin;
@@ -68,10 +76,12 @@ contract VestingFactory is IVestingFactory, ERC721, ERC721URIStorage {
      * @param endTime The timestamp when vesting ends
      * @return tokenId The ID of the scheduled vesting
      */
-    function scheduleVestingStream(address recipient, int96 amountPerSecond, uint32 startTime, uint32 endTime)
-        external
-        returns (uint256 tokenId)
-    {
+    function scheduleVestingStream(
+        address recipient,
+        int96 amountPerSecond,
+        uint32 startTime,
+        uint32 endTime
+    ) external returns (uint256 tokenId) {
         if (msg.sender != admin) revert Unauthorized();
         if (recipient == address(0) || amountPerSecond <= 0) {
             revert InvalidParameters();
@@ -83,7 +93,7 @@ contract VestingFactory is IVestingFactory, ERC721, ERC721URIStorage {
         tokenId = _tokenIdCounter++;
 
         _vestingSchedules[tokenId] = VestingSchedule({
-            recipient: recipient,
+            originalRecipient: recipient,
             startTime: startTime,
             endTime: endTime,
             amountPerSecond: amountPerSecond,
@@ -91,7 +101,13 @@ contract VestingFactory is IVestingFactory, ERC721, ERC721URIStorage {
             active: true
         });
 
-        emit VestingScheduled(tokenId, recipient, amountPerSecond, startTime, endTime);
+        emit VestingScheduled(
+            tokenId,
+            recipient,
+            amountPerSecond,
+            startTime,
+            endTime
+        );
     }
 
     /**
@@ -103,29 +119,34 @@ contract VestingFactory is IVestingFactory, ERC721, ERC721URIStorage {
         if (!schedule.active) revert StreamError();
         if (schedule.isExecuted) revert StreamError();
         if (block.timestamp < schedule.startTime) revert StreamError();
-        if (msg.sender != schedule.recipient) revert Unauthorized();
+        if (msg.sender != schedule.originalRecipient) revert Unauthorized();
 
-        uint256 totalAmount = uint256(uint96(schedule.amountPerSecond)) * uint256(schedule.endTime - schedule.startTime);
+        uint256 totalAmount = uint256(uint96(schedule.amountPerSecond)) *
+            uint256(schedule.endTime - schedule.startTime);
 
         if (superToken.balanceOf(address(this)) < totalAmount) {
             revert BalanceError();
         }
 
-        // 1. Create new vesting contract
-        Vesting vestingContract = new Vesting(superToken, schedule.recipient, schedule.amountPerSecond, tokenId);
+        // Create new vesting contract
+        Vesting vestingContract = new Vesting(superToken, tokenId);
 
-        // 2. Store vesting contract address
         vestingContracts[tokenId] = address(vestingContract);
 
-        // 3. Transfer tokens to vesting contract
         superToken.transfer(address(vestingContract), totalAmount);
 
-        // 4. Open the stream
+        _mint(schedule.originalRecipient, tokenId);
+
+        schedule.isExecuted = true;
+
         vestingContract.openStream();
 
-        // 5. Mark as executed and mint NFT
-        schedule.isExecuted = true;
-        _mint(schedule.recipient, tokenId);
+        emit VestingClaimed(
+            tokenId,
+            schedule.originalRecipient,
+            address(vestingContract),
+            totalAmount
+        );
     }
 
     /**
@@ -145,7 +166,7 @@ contract VestingFactory is IVestingFactory, ERC721, ERC721URIStorage {
         }
 
         // Create new vesting contract
-        Vesting vestingContract = new Vesting(superToken, schedule.recipient, schedule.amountPerSecond, tokenId);
+        Vesting vestingContract = new Vesting(superToken, tokenId);
 
         // Store vesting contract address
         vestingContracts[tokenId] = address(vestingContract);
@@ -154,9 +175,13 @@ contract VestingFactory is IVestingFactory, ERC721, ERC721URIStorage {
         schedule.isExecuted = true;
 
         // Mint NFT to recipient
-        _mint(schedule.recipient, tokenId);
+        _mint(schedule.originalRecipient, tokenId);
 
-        emit VestingDirectExecuted(tokenId, schedule.recipient, address(vestingContract));
+        emit VestingDirectExecuted(
+            tokenId,
+            schedule.originalRecipient,
+            address(vestingContract)
+        );
     }
 
     /**
@@ -182,7 +207,9 @@ contract VestingFactory is IVestingFactory, ERC721, ERC721URIStorage {
     /**
      * @notice Get vesting schedule from mapping
      */
-    function vestingSchedules(uint256 tokenId) external view override returns (VestingSchedule memory) {
+    function vestingSchedules(
+        uint256 tokenId
+    ) external view override returns (VestingSchedule memory) {
         return _vestingSchedules[tokenId];
     }
 
@@ -191,7 +218,9 @@ contract VestingFactory is IVestingFactory, ERC721, ERC721URIStorage {
      * @param tokenId The NFT token ID
      * @return The vesting schedule details
      */
-    function getVestingSchedule(uint256 tokenId) external view override returns (VestingSchedule memory) {
+    function getVestingSchedule(
+        uint256 tokenId
+    ) external view override returns (VestingSchedule memory) {
         return _vestingSchedules[tokenId];
     }
 
@@ -200,7 +229,9 @@ contract VestingFactory is IVestingFactory, ERC721, ERC721URIStorage {
      * @param tokenId The NFT token ID
      * @return The vesting contract address
      */
-    function getVestingContract(uint256 tokenId) external view returns (address) {
+    function getVestingContract(
+        uint256 tokenId
+    ) external view returns (address) {
         return vestingContracts[tokenId];
     }
 
@@ -208,10 +239,12 @@ contract VestingFactory is IVestingFactory, ERC721, ERC721URIStorage {
      * @notice Hook that is called before any token transfer
      * @dev Updates the vesting recipient when NFT is transferred or stops stream when burned
      */
-    function _beforeTokenTransfer(address from, address to, uint256 tokenId, uint256 /* batchSize */ )
-        internal
-        override
-    {
+    function _beforeTokenTransfer(
+        address from,
+        address to,
+        uint256 tokenId,
+        uint256 /* batchSize */
+    ) internal override {
         if (from != address(0)) {
             // Skip for minting
             VestingSchedule storage schedule = _vestingSchedules[tokenId];
@@ -223,8 +256,6 @@ contract VestingFactory is IVestingFactory, ERC721, ERC721URIStorage {
                     Vesting(vestingContract).stopStream();
                     schedule.active = false;
                 } else {
-                    // Update recipient in vesting schedule
-                    schedule.recipient = to;
                     // Update recipient in vesting contract
                     Vesting(vestingContract).updateRecipient(to);
                 }
@@ -256,21 +287,33 @@ contract VestingFactory is IVestingFactory, ERC721, ERC721URIStorage {
         return _baseURIStorage;
     }
 
-    function tokenURI(uint256 tokenId) public view override(ERC721, ERC721URIStorage) returns (string memory) {
+    function tokenURI(
+        uint256 tokenId
+    ) public view override(ERC721, ERC721URIStorage) returns (string memory) {
         return super.tokenURI(tokenId);
     }
 
-    function _burn(uint256 tokenId) internal override(ERC721, ERC721URIStorage) {
+    function _burn(
+        uint256 tokenId
+    ) internal override(ERC721, ERC721URIStorage) {
         super._burn(tokenId);
     }
 
-    function supportsInterface(bytes4 interfaceId)
+    function supportsInterface(
+        bytes4 interfaceId
+    ) public view virtual override(ERC721, ERC721URIStorage) returns (bool) {
+        return super.supportsInterface(interfaceId);
+    }
+
+    function ownerOf(
+        uint256 tokenId
+    )
         public
         view
         virtual
-        override(ERC721, ERC721URIStorage)
-        returns (bool)
+        override(ERC721, IERC721, IVestingFactory)
+        returns (address)
     {
-        return super.supportsInterface(interfaceId);
+        return super.ownerOf(tokenId);
     }
 }

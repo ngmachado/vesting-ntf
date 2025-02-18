@@ -17,11 +17,6 @@ import {IVesting} from "./interfaces/IVesting.sol";
  */
 contract Vesting is IVesting {
     using SuperTokenV1Library for ISuperToken;
-    //      ____                          __        __    __        _____ __        __
-    //     /  _/___ ___  ____ ___  __  __/ /_____ _/ /_  / /__     / ___// /_____ _/ /____  _____
-    //     / // __ `__ \/ __ `__ \/ / / / __/ __ `/ __ \/ / _ \    \__ \/ __/ __ `/ __/ _ \/ ___/
-    //   _/ // / / / / / / / / / / /_/ / /_/ /_/ / /_/ / /  __/   ___/ / /_/ /_/ / /_/  __(__  )
-    //  /___/_/ /_/ /_/_/ /_/ /_/\__,_/\__/\__,_/_.___/_/\___/   /____/\__/\__,_/\__/\___/____/
 
     /// @notice Vesting Factory contract address
     IVestingFactory public immutable override factory;
@@ -34,12 +29,6 @@ contract Vesting is IVesting {
 
     error OnlyFactoryOrAdmin();
     error OnlyFactory();
-
-    //     ______                 __                  __
-    //    / ____/___  ____  _____/ /________  _______/ /_____  _____
-    //   / /   / __ \/ __ \/ ___/ __/ ___/ / / / ___/ __/ __ \/ ___/
-    //  / /___/ /_/ / / / (__  ) /_/ /  / /_/ / /__/ /_/ /_/ / /
-    //  \____/\____/_/ /_/____/\__/_/   \__,_/\___/\__/\____/_/
 
     /**
      * @notice Creates a new vesting stream contract
@@ -91,12 +80,6 @@ contract Vesting is IVesting {
             factory.getVestingSchedule(erc721TokenId).amountPerSecond
         );
     }
-
-    //      ______     __                        __   ______                 __  _
-    //     / ____/___  ____  _____/ /________  _______/ /_____  _____
-    //    / __/ | |/_/ __/ _ \/ ___/ __ \/ __ `/ /  / /_  / / / / __ \/ ___/ __/ / __ \/ __ \/ ___/
-    //   / /____>  </ /_/  __/ /  / / / / /_/ / /  / __/ / /_/ / / / / /__/ /_/ / /_/ / / / (__  )
-    //  /_____/_/|_|\__/\___/_/  /_/ /_/\__,_/_/  /_/    \__,_/_/ /_/\___/\__/_/\____/_/ /_/____/
 
     /**
      * @notice Updates the recipient of the vesting stream

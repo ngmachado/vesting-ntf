@@ -92,6 +92,37 @@ factory.transferFrom(currentOwner, newRecipient, tokenId);
 - Balance checks
 - Time-based restrictions
 
+
+## Contract Architecture
+
+### StreamingNFTManager
+- Creates and manages different streaming seasons
+- Each season has its own VestingFactory
+- Controls season activation/deactivation
+
+### VestingFactory
+- ERC721 contract that mints streaming NFTs
+- Schedules new streams
+- Manages stream claims and transfers
+- Handles stream metadata and URIs
+
+### VestingStream
+- Individual stream contract
+- Manages Superfluid stream for a specific NFT
+- Updates stream recipient based on NFT ownership
+- Handles stream start/stop operations
+
+## Usage
+
+1. Deploy `StreamingNFTManager` with admin address
+2. Create a new season with:
+   - Treasury address
+   - SuperToken to be streamed
+   - Base URI for NFT metadata
+3. Schedule streams through the season's factory
+4. Recipients claim their streams
+5. Stream recipients can transfer their NFTs to transfer the stream
+
 ## Development
 
 ### Prerequisites
